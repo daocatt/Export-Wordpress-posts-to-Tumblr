@@ -3,15 +3,14 @@
 // Set the following parameters
 $tumblrEmail = '';
 $tumblrPassword = '';
-$tumblrHostname = '';                       // support group blog, e.g. myblog.tumblr.com or yourblog.tumblr.com
-$file = 'test.xml';                         // location of exported wordpress xml
-$categories = array();                      // e.g. blog, news, videos
-$oldDomain = '';                            // e.g. mywordpress.com (set this if you want relative links in posts converted to absolute before importing… note this should only be done if your old site will be set up to forward links to your new one.)
+$file = ''; // location of exported wordpress xml
+$categories = array(); // ex blog, news, videos
+$oldDomain = ''; // ex mywordpress.com (set this if you want relative links in posts converted to absolute before importing… note this should only be done if your old site will be set up to forward links to your new one.)
 
 
 $resolver = array();
 $tumblr = new Tumblr();
-$tumblr->setCredentials($tumblrEmail, $tumblrPassword, $tumblrHostname);
+$tumblr->setCredentials($tumblrEmail, $tumblrPassword);
 
 $wpt = new WordpressToTumblr();
 
@@ -47,14 +46,14 @@ class WordpressToTumblr {
         $ns = $this->xml->getNamespaces(true);
         foreach ($this->xml->channel[0]->item as $item) 
         {
-            // skip drafts and other unpublished content
+        	// skip drafts and other unpublished content
             if ((string)$item->children($ns['wp'])->status != 'publish')
             	continue;
+            	
             // only take posts from specific categories
-            if (!empty($categories))
+            if ($categories)
             {
-                $title = $item->xpath('category');
-                $title[1]['nicename'] = urldecode($title[1]['nicename']);   //urldecode suppport more language
+	            $title = $item->xpath('category');
 	            if (!in_array((string)$title[1]['nicename'], $categories))
 	            	continue;
 			}
@@ -70,19 +69,18 @@ class WordpressToTumblr {
             );
             
             // get the tags
-            $tagNodes = $tags = array();
-            $tagNodes = $item->xpath('category');
-
-            foreach($tagNodes as $child){
-				if ($child['domain'] == 'post_tag' && $child['nicename'])
-					$tags[(string)$child['nicename']] = urldecode($child['nicename']);
+            $tags = array();
+            $tagNodes = $item->children($ns['category']);
+            foreach($tagNodes as $child)
+			{
+				if ($child['domain'] == 'tag' && $child['nicename'])
+					$tags[(string)$child['nicename']] = (string)$child['nicename'];
 			}
-            if ($tags)
-            {
-                $params['tags'] = join(',', $tags);
-            }
+			if ($tags)
+				$params['tags'] = join(',', $tags);
+				
 			// change relative urls to absolute (pointing to old wordpress site)
-			if (!empty($oldDomain))
+			if ($oldDomain)
 				$body = str_replace('href="/', 'href="http://'.$oldDomain.'/', $body);
             
             // post it
@@ -95,7 +93,7 @@ class WordpressToTumblr {
     
     	foreach($resolver as $key => $item)
 		{
-			echo "'$key' => '$item'<br />";
+			print "'$key' => '$item',\n";
 		}
     }
 }
@@ -104,7 +102,6 @@ class Tumblr {
 
     private $pass;
     private $email;
-    private $hostname;
     private $baseUrl = 'http://www.tumblr.com/api/';
     private $postParameters = array(
         'type' => null,
@@ -112,16 +109,16 @@ class Tumblr {
         'date' => null,
         'private' => '0',
         'tags' => null,
-        'format' => 'html', //support html,markdown
+        'format' => 'html',
+        'group' => null,
         'slug' => null,
         'state' => 'published',
         'send-to-twitter' => 'no'
     );
 
-    public function setCredentials($user, $pass, $hostname='') {
+    public function setCredentials($user, $pass) {
         $this->email = $user;
         $this->pass = $pass;
-        $this->hostname = $hostname;
     }
 
     private function write($postType, $params = array()) {
@@ -130,7 +127,7 @@ class Tumblr {
         }
         // add tumblr credentials
         $params = array_merge(
-                $params, array('email' => $this->email, 'password' => $this->pass, 'group' => $this->hostname)
+                $params, array('email' => $this->email, 'password' => $this->pass)
         );
         $tumblrURL = $this->baseUrl . 'write';
         return $this->executeRequest($tumblrURL, $params);
@@ -141,8 +138,7 @@ class Tumblr {
             return false;
         }
 
-        //$params = array_intersect_key($additionalParams, $this->postParameters);
-        $params = $additionalParams+$this->postParameters;
+        $params = array_intersect_key($additionalParams, $this->postParameters);
         $params = array_merge(
                 $params, array('title' => $title, 'body' => $body, 'type' => 'regular')
         );
